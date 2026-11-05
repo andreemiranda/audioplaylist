@@ -69,7 +69,7 @@ export default function HomePage() {
     const shareUrl =
       typeof window !== "undefined" && window.location.origin.includes("localhost")
         ? window.location.href
-        : "https://dainty-duckanoo-4d72a4.netlify.app";
+        : "https://omapadosucesso.netlify.app";
 
     const shareData = {
       title: "Audio Book - O Mapa do Sucesso",
