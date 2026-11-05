@@ -10,7 +10,7 @@ import { PWAInstallButton } from "@/components/PWAInstallButton";
 
 export default function HomePage() {
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
   const [bookmarkedTracks, setBookmarkedTracks] = useState<number[]>([]);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
 

@@ -46,7 +46,7 @@ export default function AudioPlayer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const volumeBarRef = useRef<HTMLDivElement | null>(null);
-  const autoPlayNextRef = useRef<boolean>(false);
+  const autoPlayNextRef = useRef<boolean>(true);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -60,15 +60,22 @@ export default function AudioPlayer({
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [sourceIndex, setSourceIndex] = useState(0);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
 
-  // Audio source fallback hierarchy
+  // Audio source fallback hierarchy based on browser compatibility (MP3 vs OGG)
   const getSources = useCallback((track: Track) => {
-    return [
-      track.mp3,
-      track.oga,
-      track.remoteMp3,
-      track.remoteOga,
-    ];
+    if (typeof window === "undefined") {
+      return [track.mp3, track.oga, track.remoteMp3, track.remoteOga];
+    }
+    const dummy = document.createElement("audio");
+    const canOgg = dummy.canPlayType('audio/ogg; codecs="vorbis"');
+
+    // If browser indicates native Vorbis OGG support
+    if (canOgg === "probably") {
+      return [track.oga, track.mp3, track.remoteOga, track.remoteMp3];
+    }
+    // Universal MP3 first with OGG as fallback
+    return [track.mp3, track.oga, track.remoteMp3, track.remoteOga];
   }, []);
 
   const sources = getSources(currentTrack);
@@ -168,16 +175,18 @@ export default function AudioPlayer({
       setIsLoadingAudio(false);
       setAudioError(null);
 
-      // Continuous autoplay
+      // Continuous autoplay: automatically play when metadata loads
       if (isPlaying || autoPlayNextRef.current) {
         autoPlayNextRef.current = false;
         audioRef.current
           .play()
           .then(() => {
             setIsPlaying(true);
+            setAutoplayBlocked(false);
           })
           .catch(() => {
-            setIsPlaying(false);
+            // Browser blocked unmuted autoplay without user interaction
+            setAutoplayBlocked(true);
           });
       }
     }
@@ -195,12 +204,14 @@ export default function AudioPlayer({
       onTrackChange(randomIndex);
     } else {
       if (currentTrackIndex < tracks.length - 1) {
+        // Continuous next track: 1 -> 2 -> ... -> 39
         autoPlayNextRef.current = true;
         onTrackChange(currentTrackIndex + 1);
       } else if (repeatMode === "all") {
         autoPlayNextRef.current = true;
         onTrackChange(0);
       } else {
+        // Reached track 39 (Final)
         setIsPlaying(false);
         autoPlayNextRef.current = false;
       }
@@ -258,6 +269,7 @@ export default function AudioPlayer({
         .play()
         .then(() => {
           setIsPlaying(true);
+          setAutoplayBlocked(false);
         })
         .catch(() => {
           setIsPlaying(false);
@@ -284,6 +296,46 @@ export default function AudioPlayer({
   handleNextRef.current = handleNext;
   handlePreviousRef.current = handlePrevious;
   skipTimeRef.current = skipTime;
+
+  // Immediately attempt playback on startup and handle browser autoplay policy
+  useEffect(() => {
+    autoPlayNextRef.current = true;
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const startPlayback = () => {
+      audio
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+          setAutoplayBlocked(false);
+        })
+        .catch((err) => {
+          // Autoplay policy prevented playback without prior user gesture
+          console.log("Aguardando interação inicial para iniciar o áudio:", err);
+          setAutoplayBlocked(true);
+
+          const unlockOnGesture = () => {
+            audio
+              .play()
+              .then(() => {
+                setIsPlaying(true);
+                setAutoplayBlocked(false);
+              })
+              .catch(() => {});
+            window.removeEventListener("click", unlockOnGesture);
+            window.removeEventListener("touchstart", unlockOnGesture);
+            window.removeEventListener("keydown", unlockOnGesture);
+          };
+
+          window.addEventListener("click", unlockOnGesture, { once: true });
+          window.addEventListener("touchstart", unlockOnGesture, { once: true });
+          window.addEventListener("keydown", unlockOnGesture, { once: true });
+        });
+    };
+
+    startPlayback();
+  }, [setIsPlaying]);
 
   // Seek bar interaction
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -393,7 +445,7 @@ export default function AudioPlayer({
 
   return (
     <div className="card glass-card p-4 border-0">
-      {/* Native Audio Element */}
+      {/* Native Audio Element with automatic format detection */}
       <audio
         ref={audioRef}
         src={activeSrc}
@@ -402,7 +454,13 @@ export default function AudioPlayer({
         onCanPlay={() => {
           if (autoPlayNextRef.current || isPlaying) {
             autoPlayNextRef.current = false;
-            audioRef.current?.play().catch(() => {});
+            audioRef.current
+              ?.play()
+              .then(() => {
+                setIsPlaying(true);
+                setAutoplayBlocked(false);
+              })
+              .catch(() => {});
           }
         }}
         onEnded={handleEnded}
@@ -411,10 +469,27 @@ export default function AudioPlayer({
         onPlaying={() => {
           setIsLoadingAudio(false);
           setIsPlaying(true);
+          setAutoplayBlocked(false);
         }}
         onPause={() => setIsPlaying(false)}
         preload="auto"
+        autoPlay
       />
+
+      {/* Autoplay Initial Tap Prompt (Shown only if browser blocks unmuted sound before 1st interaction) */}
+      {autoplayBlocked && !isPlaying && (
+        <div className="alert alert-info py-2 px-3 small d-flex justify-content-between align-items-center mb-3 rounded-3 shadow-sm">
+          <span>Toque no botão para iniciar a reprodução contínua:</span>
+          <button
+            type="button"
+            onClick={togglePlay}
+            className="btn btn-sm btn-primary d-flex align-items-center gap-1 px-3 py-1 fw-bold"
+          >
+            <Play size={14} className="fill-white" />
+            <span>Iniciar</span>
+          </button>
+        </div>
+      )}
 
       {/* Top Header inside Player: Chapter Counter & Speed */}
       <div className="d-flex justify-content-between align-items-center mb-4">
