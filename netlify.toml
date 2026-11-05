@@ -6,7 +6,7 @@
   package = "@netlify/plugin-nextjs"
 
 [build.environment]
-  NEXT_PUBLIC_SITE_URL = "https://dainty-duckanoo-4d72a4.netlify.app"
+  NEXT_PUBLIC_SITE_URL = "https://omapadosucesso.netlify.app"
   NODE_VERSION = "22"
 
 [[headers]]
