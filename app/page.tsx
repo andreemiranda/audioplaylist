@@ -15,6 +15,7 @@ import {
   BookmarkCheck,
   Share2,
 } from "lucide-react";
+import { PWAInstallButton } from "@/components/PWAInstallButton";
 
 export default function HomePage() {
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
@@ -44,9 +45,10 @@ export default function HomePage() {
     setHasLoadedSavedState(true);
   }, []);
 
-  // Persist current track index
+  // Persist current track index and begin playing
   const handleTrackChange = (index: number) => {
     setCurrentTrackIndex(index);
+    setIsPlaying(true);
     try {
       localStorage.setItem("audioplayer_current_track", index.toString());
     } catch {}
@@ -132,16 +134,18 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Quick Info & Share */}
-          <div className="flex items-center gap-3 self-start sm:self-center">
+          {/* Quick Info, Install PWA & Share */}
+          <div className="flex items-center gap-2.5 sm:gap-3 self-start sm:self-center">
             <div className="hidden md:flex flex-col text-right text-xs">
               <span className="text-slate-300 font-medium">39 Capítulos</span>
               <span className="text-slate-500">Audio Book Oficial</span>
             </div>
 
+            <PWAInstallButton />
+
             <button
               onClick={handleShare}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/70 text-slate-200 text-xs font-medium transition-colors"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/70 text-slate-200 text-xs font-medium transition-colors cursor-pointer"
               title="Compartilhar livro"
             >
               <Share2 className="w-4 h-4 text-cyan-400" />

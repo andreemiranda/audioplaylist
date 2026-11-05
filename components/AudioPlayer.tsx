@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { Track } from "@/lib/playlist";
 import {
   Play,
@@ -16,11 +17,10 @@ import {
   Shuffle,
   Repeat,
   Repeat1,
-  ListMusic,
-  BookOpen,
   Headphones,
   Gauge,
   Sparkles,
+  Zap,
 } from "lucide-react";
 
 interface AudioPlayerProps {
@@ -50,12 +50,13 @@ export default function AudioPlayer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const volumeBarRef = useRef<HTMLDivElement | null>(null);
+  const autoPlayNextRef = useRef<boolean>(false);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(0.85);
   const [isMuted, setIsMuted] = useState(false);
-  const [previousVolume, setPreviousVolume] = useState(0.8);
+  const [previousVolume, setPreviousVolume] = useState(0.85);
   const [isShuffle, setIsShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState<"off" | "all" | "one">("off");
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -63,8 +64,9 @@ export default function AudioPlayer({
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [sourceIndex, setSourceIndex] = useState(0);
+  const [continuousAutoplay, setContinuousAutoplay] = useState(true);
 
-  // Define potential audio source URLs to fallback through if needed
+  // Audio source fallback hierarchy
   const getSources = useCallback((track: Track) => {
     return [
       track.mp3,
@@ -77,7 +79,7 @@ export default function AudioPlayer({
   const sources = getSources(currentTrack);
   const activeSrc = sources[sourceIndex] || currentTrack.mp3;
 
-  // Restore stored volume / speed / track on initial mount
+  // Restore stored volume / speed / continuous settings on initial mount
   useEffect(() => {
     try {
       const savedVolume = localStorage.getItem("audioplayer_volume");
@@ -96,6 +98,10 @@ export default function AudioPlayer({
           if (audioRef.current) audioRef.current.playbackRate = r;
         }
       }
+      const savedContinuous = localStorage.getItem("audioplayer_continuous");
+      if (savedContinuous !== null) {
+        setContinuousAutoplay(savedContinuous === "true");
+      }
       const savedShuffle = localStorage.getItem("audioplayer_shuffle");
       if (savedShuffle !== null) {
         setIsShuffle(savedShuffle === "true");
@@ -105,7 +111,7 @@ export default function AudioPlayer({
         setRepeatMode(savedRepeat);
       }
     } catch {
-      // localStorage may fail in private mode
+      // localStorage may fail in restricted iframes
     }
   }, []);
 
@@ -116,6 +122,47 @@ export default function AudioPlayer({
     setCurrentTime(0);
     setDuration(0);
   }, [currentTrackIndex]);
+
+  // Refs for media session actions
+  const handleNextRef = useRef<() => void>(() => {});
+  const handlePreviousRef = useRef<() => void>(() => {});
+  const skipTimeRef = useRef<(offset: number) => void>(() => {});
+
+  // MediaSession API setup for lock screen & notifications
+  useEffect(() => {
+    if ("mediaSession" in navigator && currentTrack) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title + (currentTrack.part ? ` - ${currentTrack.part}` : ""),
+        artist: "Lourivan Catsro",
+        album: "O Mapa do Sucesso",
+        artwork: [
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: "/cover.jpg", sizes: "800x800", type: "image/jpeg" },
+        ],
+      });
+
+      navigator.mediaSession.setActionHandler("play", () => {
+        audioRef.current?.play().then(() => setIsPlaying(true)).catch(() => {});
+      });
+      navigator.mediaSession.setActionHandler("pause", () => {
+        audioRef.current?.pause();
+        setIsPlaying(false);
+      });
+      navigator.mediaSession.setActionHandler("previoustrack", () => {
+        handlePreviousRef.current();
+      });
+      navigator.mediaSession.setActionHandler("nexttrack", () => {
+        handleNextRef.current();
+      });
+      navigator.mediaSession.setActionHandler("seekbackward", () => {
+        skipTimeRef.current(-10);
+      });
+      navigator.mediaSession.setActionHandler("seekforward", () => {
+        skipTimeRef.current(10);
+      });
+    }
+  }, [currentTrack, setIsPlaying]);
 
   // Audio update handlers
   const handleTimeUpdate = () => {
@@ -129,14 +176,24 @@ export default function AudioPlayer({
       setDuration(audioRef.current.duration || 0);
       setIsLoadingAudio(false);
       setAudioError(null);
-      if (isPlaying) {
-        audioRef.current.play().catch(() => {
-          setIsPlaying(false);
-        });
+
+      // Continuous autoplay check: if was already playing or auto-advancing
+      if (isPlaying || autoPlayNextRef.current) {
+        autoPlayNextRef.current = false;
+        audioRef.current
+          .play()
+          .then(() => {
+            setIsPlaying(true);
+          })
+          .catch((err) => {
+            console.warn("Autoplay promise prevented:", err);
+            setIsPlaying(false);
+          });
       }
     }
   };
 
+  // Next Track logic strictly following numerical sequence 1..39
   const handleNext = useCallback(() => {
     if (isShuffle) {
       const remainingIndices = tracks
@@ -144,41 +201,52 @@ export default function AudioPlayer({
         .filter((i) => i !== currentTrackIndex);
       const randomIndex =
         remainingIndices[Math.floor(Math.random() * remainingIndices.length)];
+      autoPlayNextRef.current = isPlaying || continuousAutoplay;
       onTrackChange(randomIndex);
     } else {
       if (currentTrackIndex < tracks.length - 1) {
+        // Sequential advance: 1 -> 2 -> 3 ... -> 39
+        autoPlayNextRef.current = isPlaying || continuousAutoplay;
         onTrackChange(currentTrackIndex + 1);
       } else if (repeatMode === "all") {
+        // Loop back to track 1
+        autoPlayNextRef.current = isPlaying || continuousAutoplay;
         onTrackChange(0);
       } else {
+        // Reached track 39 (Final)
         setIsPlaying(false);
+        autoPlayNextRef.current = false;
       }
     }
-  }, [currentTrackIndex, isShuffle, onTrackChange, repeatMode, setIsPlaying, tracks]);
+  }, [continuousAutoplay, currentTrackIndex, isPlaying, isShuffle, onTrackChange, repeatMode, setIsPlaying, tracks]);
 
+  // Previous Track logic
   const handlePrevious = useCallback(() => {
     if (audioRef.current && audioRef.current.currentTime > 4) {
       audioRef.current.currentTime = 0;
       setCurrentTime(0);
       return;
     }
+    autoPlayNextRef.current = isPlaying;
     if (currentTrackIndex > 0) {
       onTrackChange(currentTrackIndex - 1);
     } else {
       onTrackChange(tracks.length - 1);
     }
-  }, [currentTrackIndex, onTrackChange, tracks.length]);
+  }, [currentTrackIndex, isPlaying, onTrackChange, tracks.length]);
 
+  // When a track completes, automatically advance and play next track!
   const handleEnded = useCallback(() => {
     if (repeatMode === "one") {
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
-        audioRef.current.play();
+        audioRef.current.play().catch(() => {});
       }
-    } else {
+    } else if (continuousAutoplay || isPlaying) {
+      autoPlayNextRef.current = true;
       handleNext();
     }
-  }, [handleNext, repeatMode]);
+  }, [continuousAutoplay, handleNext, isPlaying, repeatMode]);
 
   const handleAudioError = () => {
     const nextIdx = sourceIndex + 1;
@@ -198,6 +266,7 @@ export default function AudioPlayer({
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
+      autoPlayNextRef.current = false;
     } else {
       audioRef.current
         .play()
@@ -218,15 +287,21 @@ export default function AudioPlayer({
     audioRef.current.currentTime = 0;
     setCurrentTime(0);
     setIsPlaying(false);
+    autoPlayNextRef.current = false;
   };
 
-  // Skip 15s forward / backward
+  // Skip ±15s
   const skipTime = (offset: number) => {
     if (!audioRef.current) return;
     const newTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + offset));
     audioRef.current.currentTime = newTime;
     setCurrentTime(newTime);
   };
+
+  // Keep mediaSession handler refs updated
+  handleNextRef.current = handleNext;
+  handlePreviousRef.current = handlePrevious;
+  skipTimeRef.current = skipTime;
 
   // Seek bar interaction
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -254,7 +329,7 @@ export default function AudioPlayer({
   const toggleMute = () => {
     if (!audioRef.current) return;
     if (isMuted) {
-      const restored = previousVolume || 0.8;
+      const restored = previousVolume || 0.85;
       setIsMuted(false);
       setVolume(restored);
       audioRef.current.volume = restored;
@@ -273,6 +348,14 @@ export default function AudioPlayer({
     audioRef.current.volume = 1;
     try {
       localStorage.setItem("audioplayer_volume", "1");
+    } catch {}
+  };
+
+  const toggleContinuous = () => {
+    const nextVal = !continuousAutoplay;
+    setContinuousAutoplay(nextVal);
+    try {
+      localStorage.setItem("audioplayer_continuous", String(nextVal));
     } catch {}
   };
 
@@ -306,7 +389,6 @@ export default function AudioPlayer({
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
@@ -337,12 +419,18 @@ export default function AudioPlayer({
 
   return (
     <div className="flex flex-col bg-slate-900/90 backdrop-blur-xl rounded-2xl border border-slate-700/70 shadow-2xl overflow-hidden">
-      {/* Audio Element */}
+      {/* Native Audio Element */}
       <audio
         ref={audioRef}
         src={activeSrc}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
+        onCanPlay={() => {
+          if (autoPlayNextRef.current || isPlaying) {
+            autoPlayNextRef.current = false;
+            audioRef.current?.play().catch(() => {});
+          }
+        }}
         onEnded={handleEnded}
         onError={handleAudioError}
         onWaiting={() => setIsLoadingAudio(true)}
@@ -351,61 +439,97 @@ export default function AudioPlayer({
           setIsPlaying(true);
         }}
         onPause={() => setIsPlaying(false)}
-        preload="metadata"
+        preload="auto"
       />
 
-      {/* Blue Monday / Modern Audiobook Interface Header */}
+      {/* Main Player Area */}
       <div className="relative p-6 sm:p-8 bg-gradient-to-b from-slate-900 via-slate-900/95 to-slate-950 border-b border-slate-800">
-        {/* Subtle glowing backdrop highlight */}
+        {/* Glow accents */}
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-72 h-72 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10">
-          {/* Top badges */}
-          <div className="flex items-center justify-between gap-4 mb-4">
+          {/* Top badges and Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
                 <Headphones className="w-3.5 h-3.5" />
                 Audio Book Player
               </span>
-              <span className="text-xs text-slate-400 font-mono hidden sm:inline">
-                {currentTrackIndex + 1} de {tracks.length}
+              <span className="text-xs text-slate-400 font-mono">
+                Capítulo {currentTrackIndex + 1} de {tracks.length}
               </span>
             </div>
 
-            {/* Playback Speed selector */}
-            <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60 text-xs">
-              <Gauge className="w-3.5 h-3.5 text-slate-400 ml-1.5 mr-0.5" />
-              {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
-                <button
-                  key={rate}
-                  onClick={() => handleRateChange(rate)}
-                  className={`px-2 py-0.5 rounded-md font-medium transition-colors ${
-                    playbackRate === rate
-                      ? "bg-cyan-500 text-slate-950 shadow-sm"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  {rate}x
-                </button>
-              ))}
+            {/* Continuous Autoplay Mode Toggle */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleContinuous}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium border transition-colors cursor-pointer ${
+                  continuousAutoplay
+                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-sm shadow-cyan-500/20"
+                    : "bg-slate-800/60 text-slate-400 border-slate-700/60 hover:text-slate-300"
+                }`}
+                title="Reprodução Contínua: quando ativado, avança automaticamente do áudio 1 ao 39 em sequência"
+              >
+                <Zap className={`w-3.5 h-3.5 ${continuousAutoplay ? "fill-cyan-400 text-cyan-400" : ""}`} />
+                <span>Autoplay Contínuo (1-39)</span>
+              </button>
+
+              {/* Speed Selector */}
+              <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60 text-xs">
+                <Gauge className="w-3.5 h-3.5 text-slate-400 ml-1.5 mr-0.5" />
+                {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                  <button
+                    key={rate}
+                    onClick={() => handleRateChange(rate)}
+                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                      playbackRate === rate
+                        ? "bg-cyan-500 text-slate-950 shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    {rate}x
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Current Chapter Display */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div>
-              <p className="text-xs uppercase tracking-widest text-cyan-400 font-bold mb-1">
-                O Mapa do Sucesso • Lourivan Catsro
-              </p>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                {currentTrack.title}
-              </h2>
-              {currentTrack.part && (
-                <p className="text-sm text-cyan-300/80 mt-1 font-medium">
-                  {currentTrack.part}
+          {/* Current Chapter Display with Album Art */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 mb-6">
+            <div className="flex items-center gap-4">
+              {/* Cover Thumbnail */}
+              <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden shadow-lg border border-slate-700/70 shrink-0 bg-slate-800">
+                <Image
+                  src="/cover.jpg"
+                  alt="Capa O Mapa do Sucesso"
+                  fill
+                  sizes="80px"
+                  priority
+                  className="object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+
+              <div>
+                <p className="text-xs uppercase tracking-widest text-cyan-400 font-bold mb-1">
+                  O Mapa do Sucesso • Lourivan Catsro
                 </p>
-              )}
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                  {currentTrack.title}
+                </h2>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs font-mono text-cyan-300/80 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/40">
+                    Faixa {currentTrack.id}.mp3
+                  </span>
+                  {currentTrack.part && (
+                    <span className="text-sm text-slate-300 font-medium">
+                      • {currentTrack.part}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Animated Equalizer Waves */}
@@ -450,19 +574,16 @@ export default function AudioPlayer({
               onClick={handleSeek}
               className="group relative h-3 bg-slate-800 rounded-full cursor-pointer overflow-hidden border border-slate-700/60 hover:h-4 transition-all"
             >
-              {/* Buffer / background bar */}
               <div
                 className="absolute left-0 top-0 bottom-0 bg-cyan-400/20"
                 style={{ width: "100%" }}
               />
 
-              {/* Played progress bar */}
               <div
                 className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-blue-500 via-cyan-400 to-teal-300 rounded-full group-hover:from-blue-400 group-hover:to-cyan-300 transition-all shadow-md"
                 style={{ width: `${progressPercent}%` }}
               />
 
-              {/* Scrubber head */}
               <div
                 className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity -ml-2 pointer-events-none"
                 style={{ left: `${progressPercent}%` }}
@@ -473,19 +594,23 @@ export default function AudioPlayer({
             <div className="flex items-center justify-between text-xs font-mono text-slate-400 font-medium">
               <span>{formatTime(currentTime)}</span>
               <span className="text-slate-500 text-[11px]">
-                {isLoadingAudio ? "Carregando faixa..." : ""}
+                {isLoadingAudio
+                  ? "Carregando faixa..."
+                  : continuousAutoplay
+                  ? "Próxima faixa tocará automaticamente"
+                  : ""}
               </span>
               <span>{formatTime(duration)}</span>
             </div>
           </div>
 
-          {/* Main Controls row */}
+          {/* Main Controls Row */}
           <div className="flex flex-wrap items-center justify-between gap-4">
             {/* Left Controls: Shuffle & Repeat */}
             <div className="flex items-center gap-1.5">
               <button
                 onClick={toggleShuffle}
-                className={`p-2.5 rounded-xl transition-all border ${
+                className={`p-2.5 rounded-xl transition-all border cursor-pointer ${
                   isShuffle
                     ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm"
                     : "bg-slate-800/60 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800"
@@ -497,7 +622,7 @@ export default function AudioPlayer({
 
               <button
                 onClick={cycleRepeatMode}
-                className={`p-2.5 rounded-xl transition-all border flex items-center gap-1 ${
+                className={`p-2.5 rounded-xl transition-all border flex items-center gap-1 cursor-pointer ${
                   repeatMode !== "off"
                     ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm"
                     : "bg-slate-800/60 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800"
@@ -519,7 +644,7 @@ export default function AudioPlayer({
 
               <button
                 onClick={handleStop}
-                className="p-2.5 rounded-xl bg-slate-800/60 text-slate-400 border border-slate-700/60 hover:text-slate-200 hover:bg-slate-800 transition-all"
+                className="p-2.5 rounded-xl bg-slate-800/60 text-slate-400 border border-slate-700/60 hover:text-slate-200 hover:bg-slate-800 transition-all cursor-pointer"
                 title="Parar reprodução (Stop)"
               >
                 <Square className="w-4 h-4" />
@@ -530,7 +655,7 @@ export default function AudioPlayer({
             <div className="flex items-center gap-2 sm:gap-3 mx-auto">
               <button
                 onClick={() => skipTime(-15)}
-                className="p-2 sm:p-2.5 rounded-xl bg-slate-800/70 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60 transition-colors"
+                className="p-2 sm:p-2.5 rounded-xl bg-slate-800/70 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60 transition-colors cursor-pointer"
                 title="Voltar 15 segundos"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -538,7 +663,7 @@ export default function AudioPlayer({
 
               <button
                 onClick={handlePrevious}
-                className="p-2.5 sm:p-3 rounded-xl bg-slate-800 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-700/80 transition-colors shadow-sm"
+                className="p-2.5 sm:p-3 rounded-xl bg-slate-800 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-700/80 transition-colors shadow-sm cursor-pointer"
                 title="Capítulo anterior"
               >
                 <SkipBack className="w-5 h-5" />
@@ -547,8 +672,8 @@ export default function AudioPlayer({
               <button
                 onClick={togglePlay}
                 disabled={isLoadingAudio && !duration}
-                className="p-4 sm:p-5 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-slate-950 font-bold hover:from-cyan-400 hover:to-blue-500 transition-all transform active:scale-95 shadow-lg shadow-cyan-500/25 disabled:opacity-50"
-                title={isPlaying ? "Pausar" : "Reproduzir"}
+                className="p-4 sm:p-5 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-slate-950 font-bold hover:from-cyan-400 hover:to-blue-500 transition-all transform active:scale-95 shadow-lg shadow-cyan-500/25 disabled:opacity-50 cursor-pointer"
+                title={isPlaying ? "Pausar" : "Reproduzir áudio"}
               >
                 {isPlaying ? (
                   <Pause className="w-6 h-6 fill-current text-slate-950" />
@@ -559,7 +684,7 @@ export default function AudioPlayer({
 
               <button
                 onClick={handleNext}
-                className="p-2.5 sm:p-3 rounded-xl bg-slate-800 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-700/80 transition-colors shadow-sm"
+                className="p-2.5 sm:p-3 rounded-xl bg-slate-800 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-700/80 transition-colors shadow-sm cursor-pointer"
                 title="Próximo capítulo"
               >
                 <SkipForward className="w-5 h-5" />
@@ -567,7 +692,7 @@ export default function AudioPlayer({
 
               <button
                 onClick={() => skipTime(15)}
-                className="p-2 sm:p-2.5 rounded-xl bg-slate-800/70 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60 transition-colors"
+                className="p-2 sm:p-2.5 rounded-xl bg-slate-800/70 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60 transition-colors cursor-pointer"
                 title="Avançar 15 segundos"
               >
                 <RotateCw className="w-4 h-4" />
@@ -578,7 +703,7 @@ export default function AudioPlayer({
             <div className="flex items-center gap-2 min-w-[170px] justify-end">
               <button
                 onClick={toggleMute}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-200 transition-colors"
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
                 title={isMuted ? "Ativar som" : "Mudo"}
               >
                 {isMuted || volume === 0 ? (
@@ -590,7 +715,7 @@ export default function AudioPlayer({
                 )}
               </button>
 
-              {/* Volume track */}
+              {/* Volume Track */}
               <div
                 ref={volumeBarRef}
                 onClick={handleVolumeChange}
@@ -605,7 +730,7 @@ export default function AudioPlayer({
 
               <button
                 onClick={setMaxVolume}
-                className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 hover:text-cyan-300 border border-slate-700/60 font-mono transition-colors"
+                className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 hover:text-cyan-300 border border-slate-700/60 font-mono transition-colors cursor-pointer"
                 title="Volume Máximo (100%)"
               >
                 MAX
@@ -615,7 +740,7 @@ export default function AudioPlayer({
         </div>
       </div>
 
-      {/* Keyboard Shortcuts Hint Bar */}
+      {/* Keyboard Shortcuts & Continuous Autoplay Info */}
       <div className="px-6 py-2.5 bg-slate-950/70 text-[11px] text-slate-400 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/60">
         <div className="flex items-center gap-3">
           <span>
@@ -640,9 +765,9 @@ export default function AudioPlayer({
             Mudo
           </span>
         </div>
-        <div className="flex items-center gap-1.5 text-cyan-400/90 font-medium">
+        <div className="flex items-center gap-2 text-cyan-400/90 font-medium">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Áudio em alta definição</span>
+          <span>Sequência Contínua (Faixas 1 a 39)</span>
         </div>
       </div>
     </div>
