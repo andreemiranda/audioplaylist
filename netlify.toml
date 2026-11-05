@@ -1,0 +1,32 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NEXT_PUBLIC_SITE_URL = "https://dainty-duckanoo-4d72a4.netlify.app"
+  NODE_VERSION = "22"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer-when-downgrade"
+
+# Optimize audio asset streaming and caching for MP3
+[[headers]]
+  for = "/mp3/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    Content-Type = "audio/mpeg"
+    Accept-Ranges = "bytes"
+
+# Optimize audio asset streaming and caching for OGG
+[[headers]]
+  for = "/ogg/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    Content-Type = "audio/ogg"
+    Accept-Ranges = "bytes"

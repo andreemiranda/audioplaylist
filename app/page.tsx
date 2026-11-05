@@ -66,10 +66,15 @@ export default function HomePage() {
   };
 
   const handleShare = async () => {
+    const shareUrl =
+      typeof window !== "undefined" && window.location.origin.includes("localhost")
+        ? window.location.href
+        : "https://dainty-duckanoo-4d72a4.netlify.app";
+
     const shareData = {
       title: "Audio Book - O Mapa do Sucesso",
       text: `Ouvindo ${PLAYLIST[currentTrackIndex]?.title || "Audio Book"} - O Mapa do Sucesso de Lourivan Catsro`,
-      url: window.location.href,
+      url: shareUrl,
     };
     if (navigator.share) {
       try {
@@ -78,7 +83,7 @@ export default function HomePage() {
         // user cancelled
       }
     } else {
-      await navigator.clipboard.writeText(window.location.href);
+      await navigator.clipboard.writeText(shareUrl);
       setShowCopiedToast(true);
       setTimeout(() => setShowCopiedToast(false), 2500);
     }

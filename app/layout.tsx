@@ -2,11 +2,18 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://dainty-duckanoo-4d72a4.netlify.app"),
   title: "Audio Book - O Mapa do Sucesso",
   description: "Audio book player for O Mapa do Sucesso by Lourivan Catsro, featuring chapter playlist, playback controls, progress seeking, and volume management.",
+  alternates: {
+    canonical: "https://dainty-duckanoo-4d72a4.netlify.app",
+  },
   openGraph: {
     title: "Audio Book - O Mapa do Sucesso",
     description: "Audio book player for O Mapa do Sucesso by Lourivan Catsro",
+    url: "https://dainty-duckanoo-4d72a4.netlify.app",
+    siteName: "O Mapa do Sucesso",
+    locale: "pt_BR",
     type: "website",
   },
 };
