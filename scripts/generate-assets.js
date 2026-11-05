@@ -188,7 +188,7 @@ const ogSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" wi
     <text x="0" y="175" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="28" font-weight="500">Por <tspan fill="#38bdf8" font-weight="bold">Lourivan Catsro</tspan></text>
 
     <!-- Description -->
-    <text x="0" y="240" fill="#cbd5e1" font-family="system-ui, sans-serif" font-size="20" font-weight="400">39 Capítulos narrados com reprodução contínua,</text>
+    <text x="0" y="240" fill="#cbd5e1" font-family="system-ui, sans-serif" font-size="20" font-weight="400">39 Capítulos narrados com player interativo,</text>
     <text x="0" y="270" fill="#cbd5e1" font-family="system-ui, sans-serif" font-size="20" font-weight="400">controle de velocidade, busca e marcadores.</text>
 
     <!-- Features / Highlights -->
@@ -196,10 +196,7 @@ const ogSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" wi
       <rect x="0" y="0" width="130" height="36" rx="10" fill="#1e293b"/>
       <text x="18" y="23" fill="#38bdf8" font-family="system-ui, sans-serif" font-size="14" font-weight="bold">39 FAIXAS</text>
 
-      <rect x="145" y="0" width="165" height="36" rx="10" fill="#1e293b"/>
-      <text x="18" y="23" fill="#38bdf8" font-family="system-ui, sans-serif" font-size="14" font-weight="bold">AUTOPLAY CONTÍNUO</text>
-
-      <rect x="325" y="0" width="130" height="36" rx="10" fill="#1e293b"/>
+      <rect x="145" y="0" width="130" height="36" rx="10" fill="#1e293b"/>
       <text x="24" y="23" fill="#38bdf8" font-family="system-ui, sans-serif" font-size="14" font-weight="bold">PWA APP</text>
     </g>
   </g>
@@ -239,7 +236,7 @@ const coverSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" 
   <text x="400" y="520" text-anchor="middle" fill="#22d3ee" font-family="system-ui, sans-serif" font-size="22" font-weight="bold" letter-spacing="6">AUDIOBOOK OFICIAL</text>
   <text x="400" y="590" text-anchor="middle" fill="#ffffff" font-family="system-ui, sans-serif" font-size="52" font-weight="900" letter-spacing="-1">O Mapa do Sucesso</text>
   <text x="400" y="650" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="26" font-weight="500">Por <tspan fill="#38bdf8" font-weight="bold">Lourivan Catsro</tspan></text>
-  <text x="400" y="710" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="18" font-weight="600">39 CAPÍTULOS • NARRADO EM PORTUGUÊS</text>
+  <text x="400" y="710" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="18" font-weight="600">39 CAPÍTULOS</text>
 </svg>`;
 
 async function buildAssets() {

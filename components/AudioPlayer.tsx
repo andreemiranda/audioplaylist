@@ -17,10 +17,6 @@ import {
   Shuffle,
   Repeat,
   Repeat1,
-  Headphones,
-  Gauge,
-  Sparkles,
-  Zap,
 } from "lucide-react";
 
 interface AudioPlayerProps {
@@ -64,7 +60,6 @@ export default function AudioPlayer({
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [sourceIndex, setSourceIndex] = useState(0);
-  const [continuousAutoplay, setContinuousAutoplay] = useState(true);
 
   // Audio source fallback hierarchy
   const getSources = useCallback((track: Track) => {
@@ -79,7 +74,7 @@ export default function AudioPlayer({
   const sources = getSources(currentTrack);
   const activeSrc = sources[sourceIndex] || currentTrack.mp3;
 
-  // Restore stored volume / speed / continuous settings on initial mount
+  // Restore stored volume / speed / shuffle on initial mount
   useEffect(() => {
     try {
       const savedVolume = localStorage.getItem("audioplayer_volume");
@@ -98,10 +93,6 @@ export default function AudioPlayer({
           if (audioRef.current) audioRef.current.playbackRate = r;
         }
       }
-      const savedContinuous = localStorage.getItem("audioplayer_continuous");
-      if (savedContinuous !== null) {
-        setContinuousAutoplay(savedContinuous === "true");
-      }
       const savedShuffle = localStorage.getItem("audioplayer_shuffle");
       if (savedShuffle !== null) {
         setIsShuffle(savedShuffle === "true");
@@ -111,11 +102,11 @@ export default function AudioPlayer({
         setRepeatMode(savedRepeat);
       }
     } catch {
-      // localStorage may fail in restricted iframes
+      // ignore
     }
   }, []);
 
-  // Sync source and reset source index when track changes
+  // Reset source index on track change
   useEffect(() => {
     setSourceIndex(0);
     setAudioError(null);
@@ -123,12 +114,12 @@ export default function AudioPlayer({
     setDuration(0);
   }, [currentTrackIndex]);
 
-  // Refs for media session actions
+  // Handler refs for mediaSession
   const handleNextRef = useRef<() => void>(() => {});
   const handlePreviousRef = useRef<() => void>(() => {});
   const skipTimeRef = useRef<(offset: number) => void>(() => {});
 
-  // MediaSession API setup for lock screen & notifications
+  // MediaSession API setup
   useEffect(() => {
     if ("mediaSession" in navigator && currentTrack) {
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -177,7 +168,7 @@ export default function AudioPlayer({
       setIsLoadingAudio(false);
       setAudioError(null);
 
-      // Continuous autoplay check: if was already playing or auto-advancing
+      // Continuous autoplay
       if (isPlaying || autoPlayNextRef.current) {
         autoPlayNextRef.current = false;
         audioRef.current
@@ -185,8 +176,7 @@ export default function AudioPlayer({
           .then(() => {
             setIsPlaying(true);
           })
-          .catch((err) => {
-            console.warn("Autoplay promise prevented:", err);
+          .catch(() => {
             setIsPlaying(false);
           });
       }
@@ -201,24 +191,21 @@ export default function AudioPlayer({
         .filter((i) => i !== currentTrackIndex);
       const randomIndex =
         remainingIndices[Math.floor(Math.random() * remainingIndices.length)];
-      autoPlayNextRef.current = isPlaying || continuousAutoplay;
+      autoPlayNextRef.current = true;
       onTrackChange(randomIndex);
     } else {
       if (currentTrackIndex < tracks.length - 1) {
-        // Sequential advance: 1 -> 2 -> 3 ... -> 39
-        autoPlayNextRef.current = isPlaying || continuousAutoplay;
+        autoPlayNextRef.current = true;
         onTrackChange(currentTrackIndex + 1);
       } else if (repeatMode === "all") {
-        // Loop back to track 1
-        autoPlayNextRef.current = isPlaying || continuousAutoplay;
+        autoPlayNextRef.current = true;
         onTrackChange(0);
       } else {
-        // Reached track 39 (Final)
         setIsPlaying(false);
         autoPlayNextRef.current = false;
       }
     }
-  }, [continuousAutoplay, currentTrackIndex, isPlaying, isShuffle, onTrackChange, repeatMode, setIsPlaying, tracks]);
+  }, [currentTrackIndex, isShuffle, onTrackChange, repeatMode, setIsPlaying, tracks]);
 
   // Previous Track logic
   const handlePrevious = useCallback(() => {
@@ -235,26 +222,25 @@ export default function AudioPlayer({
     }
   }, [currentTrackIndex, isPlaying, onTrackChange, tracks.length]);
 
-  // When a track completes, automatically advance and play next track!
+  // Continuous playback: automatically advance to the next audio when track ends
   const handleEnded = useCallback(() => {
     if (repeatMode === "one") {
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
         audioRef.current.play().catch(() => {});
       }
-    } else if (continuousAutoplay || isPlaying) {
+    } else {
       autoPlayNextRef.current = true;
       handleNext();
     }
-  }, [continuousAutoplay, handleNext, isPlaying, repeatMode]);
+  }, [handleNext, repeatMode]);
 
   const handleAudioError = () => {
     const nextIdx = sourceIndex + 1;
     if (nextIdx < sources.length) {
-      console.warn(`Audio error on ${activeSrc}, trying fallback: ${sources[nextIdx]}`);
       setSourceIndex(nextIdx);
     } else {
-      setAudioError("Não foi possível carregar este áudio.");
+      setAudioError("Não foi possível carregar o áudio.");
       setIsLoadingAudio(false);
       setIsPlaying(false);
     }
@@ -273,14 +259,12 @@ export default function AudioPlayer({
         .then(() => {
           setIsPlaying(true);
         })
-        .catch((err) => {
-          console.error("Play error:", err);
+        .catch(() => {
           setIsPlaying(false);
         });
     }
   };
 
-  // Stop playback (pause and rewind to 0)
   const handleStop = () => {
     if (!audioRef.current) return;
     audioRef.current.pause();
@@ -290,7 +274,6 @@ export default function AudioPlayer({
     autoPlayNextRef.current = false;
   };
 
-  // Skip ±15s
   const skipTime = (offset: number) => {
     if (!audioRef.current) return;
     const newTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + offset));
@@ -298,7 +281,6 @@ export default function AudioPlayer({
     setCurrentTime(newTime);
   };
 
-  // Keep mediaSession handler refs updated
   handleNextRef.current = handleNext;
   handlePreviousRef.current = handlePrevious;
   skipTimeRef.current = skipTime;
@@ -348,14 +330,6 @@ export default function AudioPlayer({
     audioRef.current.volume = 1;
     try {
       localStorage.setItem("audioplayer_volume", "1");
-    } catch {}
-  };
-
-  const toggleContinuous = () => {
-    const nextVal = !continuousAutoplay;
-    setContinuousAutoplay(nextVal);
-    try {
-      localStorage.setItem("audioplayer_continuous", String(nextVal));
     } catch {}
   };
 
@@ -418,7 +392,7 @@ export default function AudioPlayer({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="flex flex-col bg-slate-900/90 backdrop-blur-xl rounded-2xl border border-slate-700/70 shadow-2xl overflow-hidden">
+    <div className="card glass-card p-4 border-0">
       {/* Native Audio Element */}
       <audio
         ref={audioRef}
@@ -442,332 +416,243 @@ export default function AudioPlayer({
         preload="auto"
       />
 
-      {/* Main Player Area */}
-      <div className="relative p-6 sm:p-8 bg-gradient-to-b from-slate-900 via-slate-900/95 to-slate-950 border-b border-slate-800">
-        {/* Glow accents */}
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-72 h-72 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+      {/* Top Header inside Player: Chapter Counter & Speed */}
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <span className="badge bg-secondary-subtle text-light border border-secondary-subtle px-3 py-2 rounded-pill">
+          Capítulo {currentTrackIndex + 1} de {tracks.length}
+        </span>
 
-        <div className="relative z-10">
-          {/* Top badges and Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                <Headphones className="w-3.5 h-3.5" />
-                Audio Book Player
-              </span>
-              <span className="text-xs text-slate-400 font-mono">
-                Capítulo {currentTrackIndex + 1} de {tracks.length}
-              </span>
-            </div>
-
-            {/* Continuous Autoplay Mode Toggle */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={toggleContinuous}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium border transition-colors cursor-pointer ${
-                  continuousAutoplay
-                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-sm shadow-cyan-500/20"
-                    : "bg-slate-800/60 text-slate-400 border-slate-700/60 hover:text-slate-300"
-                }`}
-                title="Reprodução Contínua: quando ativado, avança automaticamente do áudio 1 ao 39 em sequência"
-              >
-                <Zap className={`w-3.5 h-3.5 ${continuousAutoplay ? "fill-cyan-400 text-cyan-400" : ""}`} />
-                <span>Autoplay Contínuo (1-39)</span>
-              </button>
-
-              {/* Speed Selector */}
-              <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60 text-xs">
-                <Gauge className="w-3.5 h-3.5 text-slate-400 ml-1.5 mr-0.5" />
-                {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
-                  <button
-                    key={rate}
-                    onClick={() => handleRateChange(rate)}
-                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
-                      playbackRate === rate
-                        ? "bg-cyan-500 text-slate-950 shadow-sm"
-                        : "text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    {rate}x
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Current Chapter Display with Album Art */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 mb-6">
-            <div className="flex items-center gap-4">
-              {/* Cover Thumbnail */}
-              <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden shadow-lg border border-slate-700/70 shrink-0 bg-slate-800">
-                <Image
-                  src="/cover.jpg"
-                  alt="Capa O Mapa do Sucesso"
-                  fill
-                  sizes="80px"
-                  priority
-                  className="object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-
-              <div>
-                <p className="text-xs uppercase tracking-widest text-cyan-400 font-bold mb-1">
-                  O Mapa do Sucesso • Lourivan Catsro
-                </p>
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                  {currentTrack.title}
-                </h2>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs font-mono text-cyan-300/80 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/40">
-                    Faixa {currentTrack.id}.mp3
-                  </span>
-                  {currentTrack.part && (
-                    <span className="text-sm text-slate-300 font-medium">
-                      • {currentTrack.part}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Animated Equalizer Waves */}
-            <div className="flex items-end gap-1 h-9 px-3 py-1.5 bg-slate-950/60 rounded-xl border border-slate-800 self-start sm:self-center">
-              {[40, 75, 100, 60, 90, 45, 80, 55].map((height, i) => (
-                <span
-                  key={i}
-                  className={`w-1 rounded-full transition-all duration-300 ${
-                    isPlaying
-                      ? "bg-gradient-to-t from-cyan-500 to-blue-400 animate-pulse"
-                      : "bg-slate-700"
-                  }`}
-                  style={{
-                    height: isPlaying ? `${height}%` : "20%",
-                    animationDelay: `${i * 90}ms`,
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Error Message if any */}
-          {audioError && (
-            <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between">
-              <span>{audioError}</span>
-              <button
-                onClick={() => {
-                  setSourceIndex(0);
-                  setAudioError(null);
-                }}
-                className="underline hover:text-rose-200 text-xs ml-3"
-              >
-                Tentar novamente
-              </button>
-            </div>
-          )}
-
-          {/* Progress Seek Bar */}
-          <div className="space-y-2 mb-6">
-            <div
-              ref={progressBarRef}
-              onClick={handleSeek}
-              className="group relative h-3 bg-slate-800 rounded-full cursor-pointer overflow-hidden border border-slate-700/60 hover:h-4 transition-all"
+        {/* Speed Controls */}
+        <div className="btn-group btn-group-sm" role="group">
+          {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
+            <button
+              key={rate}
+              type="button"
+              onClick={() => handleRateChange(rate)}
+              className={`btn ${
+                playbackRate === rate ? "btn-primary" : "btn-outline-secondary"
+              }`}
             >
-              <div
-                className="absolute left-0 top-0 bottom-0 bg-cyan-400/20"
-                style={{ width: "100%" }}
-              />
-
-              <div
-                className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-blue-500 via-cyan-400 to-teal-300 rounded-full group-hover:from-blue-400 group-hover:to-cyan-300 transition-all shadow-md"
-                style={{ width: `${progressPercent}%` }}
-              />
-
-              <div
-                className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity -ml-2 pointer-events-none"
-                style={{ left: `${progressPercent}%` }}
-              />
-            </div>
-
-            {/* Time Indicators */}
-            <div className="flex items-center justify-between text-xs font-mono text-slate-400 font-medium">
-              <span>{formatTime(currentTime)}</span>
-              <span className="text-slate-500 text-[11px]">
-                {isLoadingAudio
-                  ? "Carregando faixa..."
-                  : continuousAutoplay
-                  ? "Próxima faixa tocará automaticamente"
-                  : ""}
-              </span>
-              <span>{formatTime(duration)}</span>
-            </div>
-          </div>
-
-          {/* Main Controls Row */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            {/* Left Controls: Shuffle & Repeat */}
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={toggleShuffle}
-                className={`p-2.5 rounded-xl transition-all border cursor-pointer ${
-                  isShuffle
-                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm"
-                    : "bg-slate-800/60 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800"
-                }`}
-                title={isShuffle ? "Modo aleatório ativado" : "Ativar modo aleatório"}
-              >
-                <Shuffle className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={cycleRepeatMode}
-                className={`p-2.5 rounded-xl transition-all border flex items-center gap-1 cursor-pointer ${
-                  repeatMode !== "off"
-                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm"
-                    : "bg-slate-800/60 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800"
-                }`}
-                title={
-                  repeatMode === "one"
-                    ? "Repetindo este capítulo"
-                    : repeatMode === "all"
-                    ? "Repetindo toda a lista"
-                    : "Repetição desativada"
-                }
-              >
-                {repeatMode === "one" ? (
-                  <Repeat1 className="w-4 h-4 text-cyan-300" />
-                ) : (
-                  <Repeat className="w-4 h-4" />
-                )}
-              </button>
-
-              <button
-                onClick={handleStop}
-                className="p-2.5 rounded-xl bg-slate-800/60 text-slate-400 border border-slate-700/60 hover:text-slate-200 hover:bg-slate-800 transition-all cursor-pointer"
-                title="Parar reprodução (Stop)"
-              >
-                <Square className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Center Controls: Skip -15, Prev, Play/Pause, Next, Skip +15 */}
-            <div className="flex items-center gap-2 sm:gap-3 mx-auto">
-              <button
-                onClick={() => skipTime(-15)}
-                className="p-2 sm:p-2.5 rounded-xl bg-slate-800/70 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60 transition-colors cursor-pointer"
-                title="Voltar 15 segundos"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={handlePrevious}
-                className="p-2.5 sm:p-3 rounded-xl bg-slate-800 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-700/80 transition-colors shadow-sm cursor-pointer"
-                title="Capítulo anterior"
-              >
-                <SkipBack className="w-5 h-5" />
-              </button>
-
-              <button
-                onClick={togglePlay}
-                disabled={isLoadingAudio && !duration}
-                className="p-4 sm:p-5 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-slate-950 font-bold hover:from-cyan-400 hover:to-blue-500 transition-all transform active:scale-95 shadow-lg shadow-cyan-500/25 disabled:opacity-50 cursor-pointer"
-                title={isPlaying ? "Pausar" : "Reproduzir áudio"}
-              >
-                {isPlaying ? (
-                  <Pause className="w-6 h-6 fill-current text-slate-950" />
-                ) : (
-                  <Play className="w-6 h-6 fill-current text-slate-950 ml-0.5" />
-                )}
-              </button>
-
-              <button
-                onClick={handleNext}
-                className="p-2.5 sm:p-3 rounded-xl bg-slate-800 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-700/80 transition-colors shadow-sm cursor-pointer"
-                title="Próximo capítulo"
-              >
-                <SkipForward className="w-5 h-5" />
-              </button>
-
-              <button
-                onClick={() => skipTime(15)}
-                className="p-2 sm:p-2.5 rounded-xl bg-slate-800/70 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60 transition-colors cursor-pointer"
-                title="Avançar 15 segundos"
-              >
-                <RotateCw className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Right Controls: Volume slider & max volume */}
-            <div className="flex items-center gap-2 min-w-[170px] justify-end">
-              <button
-                onClick={toggleMute}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-                title={isMuted ? "Ativar som" : "Mudo"}
-              >
-                {isMuted || volume === 0 ? (
-                  <VolumeX className="w-4 h-4 text-rose-400" />
-                ) : volume < 0.5 ? (
-                  <Volume1 className="w-4 h-4" />
-                ) : (
-                  <Volume2 className="w-4 h-4 text-cyan-400" />
-                )}
-              </button>
-
-              {/* Volume Track */}
-              <div
-                ref={volumeBarRef}
-                onClick={handleVolumeChange}
-                className="w-24 sm:w-28 h-2 bg-slate-800 rounded-full cursor-pointer relative overflow-hidden border border-slate-700/60 group"
-                title={`Volume: ${Math.round(volume * 100)}%`}
-              >
-                <div
-                  className="h-full bg-cyan-400 rounded-full transition-all group-hover:bg-cyan-300"
-                  style={{ width: `${(isMuted ? 0 : volume) * 100}%` }}
-                />
-              </div>
-
-              <button
-                onClick={setMaxVolume}
-                className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 hover:text-cyan-300 border border-slate-700/60 font-mono transition-colors cursor-pointer"
-                title="Volume Máximo (100%)"
-              >
-                MAX
-              </button>
-            </div>
-          </div>
+              {rate}x
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Keyboard Shortcuts & Continuous Autoplay Info */}
-      <div className="px-6 py-2.5 bg-slate-950/70 text-[11px] text-slate-400 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/60">
-        <div className="flex items-center gap-3">
-          <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px] border border-slate-700">
-              Espaço
-            </kbd>{" "}
-            Play/Pause
-          </span>
-          <span className="hidden sm:inline">
-            <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px] border border-slate-700">
-              ←
-            </kbd>{" "}
-            <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px] border border-slate-700">
-              →
-            </kbd>{" "}
-            ±10s
-          </span>
-          <span className="hidden md:inline">
-            <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px] border border-slate-700">
-              M
-            </kbd>{" "}
-            Mudo
-          </span>
+      {/* Chapter Information & Cover */}
+      <div className="d-flex align-items-center justify-content-between gap-3 mb-4">
+        <div className="d-flex align-items-center gap-3">
+          <div
+            className="position-relative rounded-3 overflow-hidden shadow flex-shrink-0"
+            style={{ width: 72, height: 72, backgroundColor: "#1e293b" }}
+          >
+            <Image
+              src="/cover.jpg"
+              alt="Capa O Mapa do Sucesso"
+              fill
+              sizes="72px"
+              priority
+              className="object-fit-cover"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+
+          <div>
+            <h4 className="text-white fw-bold mb-1 tracking-tight">
+              {currentTrack.title}
+            </h4>
+            {currentTrack.part && (
+              <div className="text-info small fw-medium mb-1">
+                {currentTrack.part}
+              </div>
+            )}
+            <div className="text-secondary small">
+              Lourivan Catsro
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-cyan-400/90 font-medium">
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Sequência Contínua (Faixas 1 a 39)</span>
+
+        {/* Animated Equalizer Waves */}
+        <div
+          className="d-flex align-items-end gap-1 px-3 py-2 rounded-3 bg-black bg-opacity-40 border border-secondary border-opacity-25"
+          style={{ height: 42 }}
+        >
+          {[40, 75, 100, 60, 90, 45, 80, 55].map((height, i) => (
+            <span
+              key={i}
+              className="eq-bar"
+              style={{
+                height: isPlaying ? `${height}%` : "20%",
+                opacity: isPlaying ? 1 : 0.4,
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Error Message if any */}
+      {audioError && (
+        <div className="alert alert-danger py-2 px-3 small d-flex justify-content-between align-items-center mb-3">
+          <span>{audioError}</span>
+          <button
+            onClick={() => {
+              setSourceIndex(0);
+              setAudioError(null);
+            }}
+            className="btn btn-sm btn-link text-danger text-decoration-underline p-0"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
+      {/* Progress Seek Bar */}
+      <div className="mb-4">
+        <div
+          ref={progressBarRef}
+          onClick={handleSeek}
+          className="audio-seek-track mb-2"
+        >
+          <div
+            className="audio-seek-fill"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+
+        <div className="d-flex justify-content-between text-secondary small font-monospace">
+          <span>{formatTime(currentTime)}</span>
+          <span>{isLoadingAudio ? "..." : ""}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+
+      {/* Controls Row */}
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
+        {/* Shuffle, Repeat, Stop */}
+        <div className="d-flex align-items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleShuffle}
+            className={`btn btn-sm ${
+              isShuffle ? "btn-primary" : "btn-outline-secondary"
+            }`}
+            title="Aleatório"
+          >
+            <Shuffle size={16} />
+          </button>
+
+          <button
+            type="button"
+            onClick={cycleRepeatMode}
+            className={`btn btn-sm ${
+              repeatMode !== "off" ? "btn-primary" : "btn-outline-secondary"
+            }`}
+            title="Repetir"
+          >
+            {repeatMode === "one" ? <Repeat1 size={16} /> : <Repeat size={16} />}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleStop}
+            className="btn btn-sm btn-outline-secondary"
+            title="Parar"
+          >
+            <Square size={16} />
+          </button>
+        </div>
+
+        {/* Center: -15s, Prev, Play/Pause, Next, +15s */}
+        <div className="d-flex align-items-center gap-2">
+          <button
+            type="button"
+            onClick={() => skipTime(-15)}
+            className="btn btn-outline-secondary btn-sm"
+            title="Voltar 15s"
+          >
+            <RotateCcw size={16} />
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrevious}
+            className="btn btn-secondary btn-sm"
+            title="Anterior"
+          >
+            <SkipBack size={18} />
+          </button>
+
+          <button
+            type="button"
+            onClick={togglePlay}
+            disabled={isLoadingAudio && !duration}
+            className="btn btn-primary rounded-circle p-3 shadow d-flex align-items-center justify-content-center"
+            style={{ width: 56, height: 56 }}
+            title={isPlaying ? "Pausar" : "Reproduzir"}
+          >
+            {isPlaying ? (
+              <Pause size={24} className="text-white" />
+            ) : (
+              <Play size={24} className="text-white ms-1" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleNext}
+            className="btn btn-secondary btn-sm"
+            title="Próximo"
+          >
+            <SkipForward size={18} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => skipTime(15)}
+            className="btn btn-outline-secondary btn-sm"
+            title="Avançar 15s"
+          >
+            <RotateCw size={16} />
+          </button>
+        </div>
+
+        {/* Right: Volume */}
+        <div className="d-flex align-items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleMute}
+            className="btn btn-sm btn-link text-secondary p-1 text-decoration-none"
+            title={isMuted ? "Ativar som" : "Mudo"}
+          >
+            {isMuted || volume === 0 ? (
+              <VolumeX size={18} className="text-danger" />
+            ) : volume < 0.5 ? (
+              <Volume1 size={18} />
+            ) : (
+              <Volume2 size={18} className="text-info" />
+            )}
+          </button>
+
+          <div
+            ref={volumeBarRef}
+            onClick={handleVolumeChange}
+            className="volume-track"
+          >
+            <div
+              className="volume-fill"
+              style={{ width: `${(isMuted ? 0 : volume) * 100}%` }}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={setMaxVolume}
+            className="btn btn-sm btn-outline-secondary py-0 px-2 font-monospace"
+            style={{ fontSize: "11px" }}
+            title="Volume Máximo"
+          >
+            MAX
+          </button>
         </div>
       </div>
     </div>

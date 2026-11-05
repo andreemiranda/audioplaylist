@@ -24,9 +24,12 @@ export function OfflineIndicator() {
   if (isOnline) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-xl bg-amber-500/90 text-slate-950 px-4 py-2 text-xs font-semibold shadow-lg backdrop-blur-md border border-amber-300">
-      <WifiOff className="w-4 h-4" />
-      <span>Modo Offline — Reproduzindo dados salvos em cache.</span>
+    <div
+      className="position-fixed bottom-0 start-0 m-3 px-3 py-2 bg-warning text-dark rounded-3 shadow d-flex align-items-center gap-2 small fw-semibold"
+      style={{ zIndex: 1060 }}
+    >
+      <WifiOff size={16} />
+      <span>Modo Offline</span>
     </div>
   );
 }

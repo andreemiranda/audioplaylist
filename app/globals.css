@@ -1,34 +1,136 @@
-@import "tailwindcss";
+@import "bootstrap/dist/css/bootstrap.min.css";
 
 :root {
-  --foreground: #e2e8f0;
-  --background: #0f172a;
+  --bs-body-bg: #0b111e;
+  --bs-body-color: #e2e8f0;
+  --bs-primary: #0ea5e9;
+  --bs-primary-rgb: 14, 165, 233;
+  --app-card-bg: rgba(18, 26, 43, 0.88);
+  --app-border: rgba(255, 255, 255, 0.1);
+  --app-accent: #0ea5e9;
+  --app-accent-hover: #38bdf8;
 }
 
 body {
-  color: var(--foreground);
-  background-color: var(--background);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  background-color: var(--bs-body-bg);
+  color: var(--bs-body-color);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   min-height: 100vh;
   margin: 0;
   padding: 0;
   overflow-x: hidden;
 }
 
-/* Custom scrollbar for playlist */
+/* Background overlay with cover image */
+.app-bg-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.app-bg-image {
+  object-fit: cover;
+  object-position: center;
+  opacity: 0.15;
+  filter: blur(8px);
+  transform: scale(1.05);
+}
+
+.app-bg-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 20%, rgba(14, 165, 233, 0.08), transparent 70%),
+              linear-gradient(to bottom, rgba(11, 17, 30, 0.7) 0%, rgba(11, 17, 30, 0.95) 100%);
+}
+
+/* Glass Card styling */
+.glass-card {
+  background: var(--app-card-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--app-border);
+  border-radius: 1rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* Custom Seek Bar */
+.audio-seek-track {
+  height: 8px;
+  background-color: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+
+.audio-seek-track:hover {
+  height: 12px;
+}
+
+.audio-seek-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0284c7 0%, #0ea5e9 50%, #38bdf8 100%);
+  border-radius: 999px;
+  transition: width 0.1s linear;
+}
+
+/* Volume Track */
+.volume-track {
+  width: 90px;
+  height: 6px;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+
+.volume-track:hover {
+  height: 8px;
+}
+
+.volume-fill {
+  height: 100%;
+  background-color: var(--app-accent);
+  border-radius: 999px;
+}
+
+/* Equalizer Bars */
+.eq-bar {
+  width: 3px;
+  background-color: var(--app-accent);
+  border-radius: 3px;
+  transition: height 0.25s ease;
+}
+
+/* Active Track highlight */
+.track-item-active {
+  background: rgba(14, 165, 233, 0.16) !important;
+  border-left: 4px solid var(--app-accent) !important;
+}
+
+.track-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(11, 17, 30, 0.5);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.25);
+  background: rgba(255, 255, 255, 0.18);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.45);
+  background: rgba(14, 165, 233, 0.45);
 }

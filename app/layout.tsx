@@ -111,7 +111,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" data-bs-theme="dark">
       <head>
         <script
           type="application/ld+json"
@@ -122,7 +122,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </head>
-      <body className="antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
+      <body>
         <ServiceWorkerRegister />
         <OfflineIndicator />
         {children}
